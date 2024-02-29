@@ -1,70 +1,49 @@
 mod args;
-mod determine_mesh;
-mod determine_nodes;
-mod determine_cores;
-mod determine_edges;
+
+mod commands;
 mod utils;
 mod event;
 mod writer;
 
-use std::fs;
 use std::path::Path;
 use clap::Parser;
+use log::info;
 use crate::writer::Writer;
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let args = args::Cli::parse();
+    let basepath = if args.outdir == "" { None } else { Some(args.outdir.clone()) };
 
-    let basepath = fs::canonicalize(Path::new(args.outdir.as_str()))
-        .expect(format!("Folder at {} does not exist!", args.outdir).as_str());
+    let mut writer = Writer::new(basepath, &args);
+    if args.events.is_some() || matches!(args.command, args::Commands::DetermineTopology(_)) {
+        writer.write_lines(utils::events_map_to_vec(), "events.csv");
+    }
 
-    let writer = Writer::new(String::from(basepath.as_path().to_str().unwrap()), &args);
-    writer.write_meta();
-    let events = utils::events_map_to_vec();
-    writer.write_lines(events, "events.csv");
+    if writer.basepath.is_some() {
+        info!("Will write data to: {:?}", writer.get_outpath());
+    }
 
     match &args.command {
-        args::Commands::DetermineMesh => {
-             determine_mesh::determine(Some(args.nodeid_length), &writer);
-        }
-        args::Commands::DetermineNodes(dargs) => {
-            determine_nodes::determine(Some(args.nodeid_length), (dargs.mesh_x, dargs.mesh_y),
-                                       &writer);
-        }
-        args::Commands::DetermineCores(dargs) => {
-            determine_cores::determine(Some(args.nodeid_length),
-                                       (dargs.mesh_x, dargs.mesh_y),
-                                       dargs.cores_per_dsu as u16,
-                                       Path::new(&dargs.benchmark_binary_path),
-                                       dargs.benchmark_binary_args.as_str(),
-                                       &writer);
+        args::Commands::DetermineTopology(dargs) => {
+            let mesh_size = commands::determine_mesh::determine(args.nodeid_length, &writer);
+            commands::determine_nodes::determine(args.nodeid_length, mesh_size, &writer);
+            commands::determine_cores::determine(args.nodeid_length, mesh_size, args.cores_per_dsu as u16,
+                                                 Path::new(&dargs.benchmark_binary_path),
+                                                 dargs.benchmark_binary_args.clone(),  &writer);
         }
 
-        args::Commands::DetermineEdges(dargs) => {
-            determine_edges::determine(Some(args.nodeid_length),
-                                       (dargs.mesh_x, dargs.mesh_y),
-                                       dargs.cores_per_dsu as u16,
-                                       dargs.numa_config,
-                                       Path::new(&dargs.benchmark_binary_path),
-                                       dargs.benchmark_binary_args.as_str(),
-                                       &writer);
+        args::Commands::Launch(largs) => {
+           commands::launch::launch(largs, (args.mesh_x, args.mesh_y), args.nodeid_length,
+                                    args.events, &writer);
         }
-        args::Commands::DetermineAll(dargs) => {
-            let mesh_size = determine_mesh::determine(Some(args.nodeid_length),
-                                                      &writer);
-            determine_nodes::determine(Some(args.nodeid_length), mesh_size, &writer);
-            determine_cores::determine(Some(args.nodeid_length), mesh_size, dargs.cores_per_dsu as u16,
-                                       Path::new(&dargs.benchmark_binary_path), dargs.benchmark_binary_args.as_str(),
-                                       &writer);
-            determine_edges::determine(Some(args.nodeid_length),
-                                       mesh_size,
-                                       dargs.cores_per_dsu as u16,
-                                       dargs.numa_config,
-                                       Path::new(&dargs.benchmark_binary_path),
-                                       dargs.benchmark_binary_args.as_str(),
-                                       &writer);
+
+        args::Commands::LaunchMulti(largs) => {
+            commands::launch_multi::launch_multi(largs, (args.mesh_x, args.mesh_y), args.nodeid_length,
+                                                 args.events, &mut writer);
         }
     }
+    writer.write_meta();
 
 }

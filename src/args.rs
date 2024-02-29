@@ -1,35 +1,27 @@
+/* Structs for CLI parameter parsing */
+
 use std::fmt;
 use std::fmt::Formatter;
 use clap::{Args, Parser, Subcommand};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
+static DEFAULT_MESH_X: u16 = 8;
+static DEFAULT_MESH_Y: u16 = 8;
+static DEFAULT_CORES_PER_DSU: u8 = 2;
+static DEFAULT_NODEID_LENGTH: u8 = 9;
+
+/* Topology Parameters */
 #[derive(Args, Debug)]
-pub struct DetermineAllArgs {
+pub struct DetermineTopologyArgs {
+    #[arg(long, value_enum)]
+    pub numa_config: NUMAConfig,
+
+    #[arg(long)]
     pub benchmark_binary_path: String,
 
-    #[arg(default_value_t=String::from(""))]
-    pub benchmark_binary_args: String,
-
-    #[arg(default_value_t=2)]
-    pub cores_per_dsu: u8,
-
-    #[arg(value_enum)]
-    pub numa_config: NUMAConfig
-}
-
-#[derive(Args, Debug)]
-pub struct DetermineCoresArgs {
-    pub benchmark_binary_path: String,
-
-    #[arg(default_value_t=String::from(""))]
-    pub benchmark_binary_args: String,
-
-    #[arg(default_value_t=8)]
-    pub mesh_x: u16,
-    #[arg(default_value_t=6)]
-    pub mesh_y: u16,
-
-    #[arg(default_value_t=2)]
-    pub cores_per_dsu: u8,
+    #[arg(long, trailing_var_arg = true, value_delimiter = ' ', allow_hyphen_values = true)]
+    pub benchmark_binary_args: Option<Vec<String>>,
 }
 
 
@@ -46,50 +38,77 @@ impl fmt::Display for NUMAConfig {
         write!(f, "{}", self)
     }
 }
+
+/* Launch* parameters */
 #[derive(Args, Debug)]
-pub struct DetermineEdgesArgs {
-    pub benchmark_binary_path: String,
+pub struct LaunchArgs {
 
-    #[arg(default_value_t=String::from(""))]
-    pub benchmark_binary_args: String,
+    #[arg(long)]
+    pub core_map: Option<String>,
 
-    #[arg(default_value_t=8)]
-    pub mesh_x: u16,
-    #[arg(default_value_t=8)]
-    pub mesh_y: u16,
+    #[arg(long)]
+    pub shell: Option<String>,
 
-    #[arg(default_value_t=2)]
-    pub cores_per_dsu: u8,
+    #[arg(long, value_delimiter=' ')]
+    pub env: Option<Vec<String>>,
 
-    #[arg(value_enum, default_value_t=NUMAConfig::Monolithic)]
-    pub numa_config: NUMAConfig
+    #[arg(long)]
+    pub pwd: Option<String>,
+
+    #[arg(long)]
+    pub binary: String,
+
+    #[arg(long, trailing_var_arg = true, value_delimiter = ' ', allow_hyphen_values = true)]
+    pub args: Option<Vec<String>>,
 }
 
-#[derive(Args, Debug)]
-pub struct DetermineNodesArgs {
-    #[arg(default_value_t=8)]
-    pub mesh_x: u16,
-    #[arg(default_value_t=6)]
-    pub mesh_y: u16,
+#[derive(Args,Debug)]
+pub struct LaunchMultiArgs {
+    #[arg(long)]
+    pub config: String,
 }
 
+#[derive(Serialize,Deserialize,Debug)]
+pub(crate) struct LaunchMultiConfig {
+    pub executables: Vec<LaunchMultiExecutableConfig>
+}
+
+#[derive(Serialize,Deserialize,Debug)]
+pub(crate) struct LaunchMultiExecutableConfig {
+    pub name: Option<String>,
+    pub shell: Option<String>,
+    pub binary: String,
+    pub args: Option<String>,
+    pub core_map: Option<String>,
+    pub env: Option<Map<String,Value>>
+}
+
+
+/* Main CLI */
 #[derive(Subcommand,Debug)]
 pub enum Commands {
-    DetermineMesh,
-    DetermineNodes(DetermineNodesArgs),
-    DetermineCores(DetermineCoresArgs),
-    DetermineEdges(DetermineEdgesArgs),
-    DetermineAll(DetermineAllArgs)
+    DetermineTopology(DetermineTopologyArgs),
+
+    Launch(LaunchArgs),
+    LaunchMulti(LaunchMultiArgs),
 }
 
 #[derive(Parser,Debug)]
 #[command(author,version,about,long_about=None)]
 pub struct Cli {
-    #[arg(long, default_value_t=9)]
+    #[arg(long, default_value_t=DEFAULT_NODEID_LENGTH)]
     pub nodeid_length: u8,
 
-    #[arg(long, default_value_t=String::from(""))]
-    pub events: String,
+    #[arg(long, default_value_t=DEFAULT_MESH_X)]
+    pub mesh_x: u16,
+    #[arg(long, default_value_t=DEFAULT_MESH_Y)]
+    pub mesh_y: u16,
+
+    #[arg(long, default_value_t=DEFAULT_CORES_PER_DSU)]
+    pub cores_per_dsu: u8,
+
+    #[arg(long, value_delimiter = ',')]
+    pub events: Option<Vec<String>>,
 
     #[arg(long, default_value_t=String::from("data"))]
     pub outdir: String,

@@ -1,4 +1,6 @@
-use serde::{Deserialize, Serialize};
+/* CMN Perf event wrapping and handling */
+use serde::{Deserialize, Serialize, Serializer};
+use serde::ser::SerializeStruct;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeID {
@@ -9,44 +11,52 @@ pub struct NodeID {
 }
 
 impl NodeID {
-    pub(crate) fn to_nodeid(&self, nodeid_length: Option<u8>) -> u16 {
-        let _nodeid_length = nodeid_length.unwrap_or(self.nodeid_length);
-        let offset: u16 = if _nodeid_length == 9 { 3 } else { 2 };
-        assert!(self.x < 2_u16.pow(_nodeid_length as u32));
-        assert!(self.y < 2_u16.pow(_nodeid_length as u32));
+    pub(crate) fn to_nodeid(&self) -> u16 {
+        let offset: u16 = match self.nodeid_length {
+            7  => 2,
+            9  => 3,
+            11 => 4,
+            _  => 0
+        };
+        assert!(self.x < 2_u16.pow(self.nodeid_length as u32));
+        assert!(self.y < 2_u16.pow(self.nodeid_length as u32));
         assert!(self.port <= 1);
 
         (self.x << offset+3) | (self.y << 3) | (self.port << 2)
     }
 
-    pub fn from_nodeid(nodeid: u16, nodeid_length: Option<u8>) -> NodeID {
-        let _nodeid_length = nodeid_length.unwrap_or(9);
-        let offset: u16 = if _nodeid_length == 9 { 3 } else { 2 };
+    pub fn from_nodeid(nodeid: u16, nodeid_length: u8) -> NodeID {
+        let offset: u16 = match nodeid_length {
+            7  => 2,
+            9  => 3,
+            11 => 4,
+            _  => 0
+        };
         let mask: u16 = !(!0b0 << offset);
         let port = (nodeid & 0b000000100) >> 2;
         let y = (nodeid >> 3) & mask;
         let x = (nodeid >> (3 + offset)) & mask;
-        NodeID {x, y, port, nodeid_length: _nodeid_length }
+        NodeID {x, y, port, nodeid_length }
     }
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Event {
     pub cmn_idx: u8,
     pub event_type: u8,
     pub event_id: u16,
     pub node_id: NodeID,
-    pub counts: Option<u64>
+    pub counts: i128 // typical perf counters are unsigned 64-bit, but we need -1 for <not supported>, so go one step higher
 }
 
 impl Event {
-    pub fn from_captures(c: regex::Captures, nodeid_length: Option<u8>) -> Event {
+    pub fn from_captures(c: regex::Captures, nodeid_length: u8) -> Event {
         let counts = c.get(1).unwrap().as_str();
         let counts_i = match counts.trim() {
-            "<not counted>" => Some(0),
-            "<not supported>" => None,
-            _ => Some(counts.parse::<u64>().unwrap())
+            "<not counted>" => 0,
+            "<not supported>" => -1,
+            _ => counts.parse::<i128>().unwrap()
         };
         Event {
             cmn_idx: c.get(2).unwrap().as_str().parse().unwrap(),
@@ -57,5 +67,18 @@ impl Event {
                                          nodeid_length),
             counts: counts_i
         }
+    }
+}
+
+impl Serialize for Event {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut state = serializer.serialize_struct("Event", 5)?;
+        state.serialize_field("cmn_idx", &self.cmn_idx)?;
+        state.serialize_field("event_type", &format!("{:#x}", self.event_type))?;
+        state.serialize_field("event_id", &format!("{:#x}", self.event_id))?;
+        state.serialize_field("node_id", &format!("{:#x}", self.node_id.to_nodeid()))?;
+        state.serialize_field("counts", &self.counts)?;
+
+        state.end()
     }
 }
