@@ -1,3 +1,1 @@
-
-
-Code is heavily inspired by https://github.com/nviennot/core-to-core-latency from `nviennot`, MIT license
+Code is extracted from https://github.com/nviennot/core-to-core-latency, written by Nicolas Viennot (`nviennot`), MIT license
