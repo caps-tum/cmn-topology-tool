@@ -13,14 +13,14 @@ It relies on performance counters exposed by the CMN PMU, namely:
 
 Note: Access to these events requires either elevated permissions or setting `kernel.perf_event_paranoid` to -1!
 
-The tool has been tested on a Linux openSUSE kernel version 5.14.21 and compiled using `rustc` version 1.75.0.
+The tool has been tested on a Linux openSUSE Leap 15 SP5, kernel version 5.14.21 and compiled using `rustc` version 1.75.0.
 
 This repo also contains a minified extract of the [core-to-core latency benchmark](https://github.com/nviennot/core-to-core-latency) written by Nicolas Viennot, MIT License, 
 which is placed in `src/benchmark`.
 
 You can build this project using `cargo build -r` in the main directory. The binaries will be in `target/release/`.
 
-## Subcmmands
+## Subcommands
 
 ### determine-topology
 
